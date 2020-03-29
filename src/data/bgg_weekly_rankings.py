@@ -63,11 +63,12 @@ def create_df_gm_ranks(gm_ids, bs_pg_gm):
     gm_list = []
     idx_split = 4
     idx_size = int(len(gm_ids) / idx_split)
-    http = urllib3.PoolManager()
+    # http = urllib3.PoolManager()
     for i in range(idx_split):
-        print(i, str(datetime.now().time())[:8])
+        # print(i, str(datetime.now().time())[:8])
         idx = str(gm_ids[i * idx_size:(i + 1) * idx_size]).replace(' ', '')[1:-1]
-        pg = http.request('GET', f'{bs_pg_gm}{str(idx)}', retries=10)
+        # pg = http.request('GET', f'{bs_pg_gm}{str(idx)}', retries=10)
+        pg = request.urlopen(f'{bs_pg_gm}{str(idx)}')
         xsoup = BeautifulSoup(pg.data, 'xml')
         gm_list += [extract_game_item(x) for x in xsoup.find_all('item')]
     df = pd.DataFrame(gm_list)
@@ -78,7 +79,7 @@ def update_json(gm_ids):
     with open('../data/kaggle/dataset-metadata.json', 'rb') as f:
         meta_dict = json.load(f)
     meta_dict['resources'].append({
-        'path': f'bgg_top{len(gm_ids)}_{str(datetime.now().date())}.csv',
+        'path': f'{str(datetime.now().date())}_bgg_top{len(gm_ids)}.csv',
         'description': f'Board Game Geek top 2000 games on {str(datetime.now().date())}'
     })
     with open('../data/kaggle/dataset-metadata.json', 'w') as fp:
@@ -89,7 +90,16 @@ pg_gm_rnks = 'https://boardgamegeek.com/browse/boardgame/page/'
 gm_ids = top_2k_gms(pg_gm_rnks)
 bs_pg = 'https://www.boardgamegeek.com/xmlapi2/'
 bs_pg_gm = f'{bs_pg}thing?type=boardgame&stats=1&ratingcomments=1&page=1&pagesize=10&id='
-df = create_df_gm_ranks(gm_ids, bs_pg_gm)
+gm_list = []
+idx_split = 4
+idx_size = int(len(gm_ids)/idx_split)
+for i in range(idx_split):
+    idx = str(gm_ids[i*idx_size:(i+1)*idx_size]).replace(' ','')[1:-1]
+    pg = request.urlopen(f'{bs_pg_gm}{str(idx)}')
+    xsoup = BeautifulSoup(pg, 'xml')
+    gm_list += [extract_game_item(x) for x in xsoup.find_all('item')]
+df = pd.DataFrame(gm_list)
+# df = create_df_gm_ranks(gm_ids, bs_pg_gm)
 #print(df.head())
 df.to_csv(f'../../data/kaggle/bgg_top{len(gm_ids)}_{str(datetime.now().date())}_tmp.csv', index=False)
 update_json(gm_ids)

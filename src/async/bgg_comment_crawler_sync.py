@@ -1,0 +1,89 @@
+from bs4 import BeautifulSoup
+import requests
+import pandas as pd
+import json
+from requests.compat import urljoin
+from datetime import datetime
+import bs4
+import math
+from time import sleep
+
+
+def main():
+    # Create loop
+    print(str(datetime.now().time())[:8])
+    get_game_ratings()
+
+
+
+def get_game_ratings():
+    with open('../data/game_info_190509.json', 'r') as fp:
+        games_dict = json.load(fp)
+    pg_sz = 100
+    xml_bs = f'https://www.boardgamegeek.com/xmlapi2/thing?type=boardgame&ratingcomments=1&pagesize={pg_sz}'
+    ratings_list = [(x['game_id'], x['usersrated']) for x in games_dict]
+    ratings_list.sort(key=lambda tup: tup[1], reverse=False)
+    group_sz = 25
+    user_rating = []
+    user_comment = []
+    for group_num in range(math.ceil(len(ratings_list) / group_sz)):
+        group_ids = ratings_list[group_num * group_sz:(group_num + 1) * group_sz]
+        pg_ct = math.ceil(group_ids[-1][1] / pg_sz)
+        for pg_num in range(1, pg_ct + 1):
+            xml_ids = ','.join([x[0] for x in group_ids if x[1] > (pg_num - 1) * pg_sz])
+            xml_fl = requests.get(f'{xml_bs}&page={pg_num}&id={xml_ids}')
+            ct = 0
+            while xml_fl.status_code != 200:
+                sleep(1)
+                ct+=1
+                xml_fl = requests.get(f'{xml_bs}&page={pg_num}&id={xml_ids}')
+                if ct >= 10:
+                    raise TimeoutError('Took too long')
+            user_rating, user_comment = get_pg_ratings(xml_fl, user_rating, user_comment)
+        print(f'group {group_num} at {str(datetime.now().time())[:8]}')
+        if group_num%20==0 and group_num>0:
+            with open(f'../data/user_ratings_190511.json', 'w') as fp:
+                json.dump(user_rating, fp)
+            with open(f'../data/user_comments_190511.json', 'w') as fp:
+                json.dump(user_comment, fp)
+
+
+    with open('../data/user_ratings_190511.json', 'w') as fp:
+        json.dump(user_rating, fp)
+    with open('../data/user_comments_190511.json', 'w') as fp:
+        json.dump(user_comment, fp)
+
+
+    # print(str(datetime.now().time())[:8])
+    # return user_rating, user_comment
+
+
+def get_pg_ratings(xml: requests.models.Response, user_ratings: list, user_comments: list):
+    # print(Fore.CYAN + f"Getting ids for page number {page_number}", flush=True)
+    soup = BeautifulSoup(xml.content, 'xml')
+    items = soup.find_all('item')
+    for item in items:
+        # item_dict = defaultdict(dict)
+        rating_list = [x for x in item.comments.contents if type(x) == bs4.element.Tag]
+        comment_list = [x for x in rating_list if x['value'] != '']
+        for rating in rating_list:
+            user_ratings.append({'user': rating['username'],
+                                 'rating': float(rating['rating']),
+                                 'game_id': item['id']})
+            # ratings_dict[item['id']].update({rating['username']: float(rating['rating'])})
+            # users_dict[rating['username']].update({item['id']: float(rating['rating'])})
+        for comment in comment_list:
+            user_comments.append({'user': comment['username'],
+                                  'rating': float(comment['rating']),
+                                  'game_id': item['id'],
+                                  'comment': comment['value']})
+            # item_dict[float(comment['rating'])].update({comment['username']: comment['value']})
+            # comments_dict[item['id']].update({comment['username']: [comment['value'], float(comment['rating'])]})
+    return user_ratings, user_comments
+
+
+if __name__ == '__main__':
+    main()
+    # game_items = game_data_async()
+    # export_csv(game_items)
+    # print(5)
