@@ -3,7 +3,7 @@ import requests
 import json
 import math
 from time import sleep
-
+import os
 
 def ratings_data(games_dict):
     pg_sz = 100
@@ -70,11 +70,13 @@ def extract_ratings(soup, ratings, comments):
 
 
 if __name__ == '__main__':
-    with open('../data/games_info.json', 'r') as fp:
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    data_dir = os.path.join(current_dir, os.pardir, "data")
+    with open(os.path.join(data_dir,'games_info.json'), 'r') as fp:
         game_info_dict = json.load(fp)
     all_ratings, all_comments = ratings_data(game_info_dict)
     print(5)
-    with open('../data/game_ratings.json', 'w') as fp:
+    with open(os.path.join(data_dir,'games_ratings.json'), 'w') as fp:
         json.dump(all_ratings, fp)
-    with open('../data/game_comments.json', 'w') as fp:
+    with open(os.path.join(data_dir,'game_comments.json'), 'w') as fp:
         json.dump(all_comments, fp)

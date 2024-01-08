@@ -5,7 +5,32 @@ import json
 from requests.compat import urljoin
 from datetime import datetime
 import re
+from time import sleep
 
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+
+
+LOGIN_USERNAME_FIELD = '//*[@id="inputUsername"]'
+LOGIN_PASSWORD_FIELD = '//*[@id="inputPassword"]'
+LOGIN_BUTTON = '//*[@id="mainbody"]/div/div/gg-login-page/div[1]/div/gg-login-form/form/fieldset/div[3]/button[1]'
+
+with open("/home/msnow/config.json", "r") as fp:
+    secrets = json.load(fp)
+USERNAME = secrets["bgg_crawler"]["username"]
+PASSWORD = secrets["bgg_crawler"]["password"]
+
+chrome_options = Options()
+chrome_options.add_argument('--headless')
+chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument('--disable-dev-shm-usage')
+cookies = {}
 
 def game_data():
     xml_bs = "https://www.boardgamegeek.com/xmlapi2/thing?type=boardgame&stats=1&ratingcomments=1&page=1&pagesize=10&id="
@@ -15,13 +40,15 @@ def game_data():
         ct = 0
         soup_pg = browse_games(pg)
         pg_ids, pg_links = extract_game_ids(soup_pg)
-        while len(pg_items) != 100:
+        print(f"page number {pg} attempt number {ct}")
+        while len(pg_items) != 100 and ct < 20:
             xml_fl = requests.get(f'{xml_bs}{",".join(pg_ids)}')
             soup_xml = BeautifulSoup(xml_fl.content, "xml")
             pg_items = extract_xml(soup_xml, pg_links)
             ct += 1
             if ct > 1:
                 print(f"page number {pg} attempt number {ct}")
+                print(len(pg_items))
         all_items += pg_items
     return all_items
 
@@ -85,9 +112,28 @@ def extract_item(game_item, game_url):
 
 
 def browse_games(page_num):
+    if page_num == 21:
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get('https://boardgamegeek.com/login')
+        login = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_USERNAME_FIELD)))
+        password = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_PASSWORD_FIELD)))
+
+        login_button = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_BUTTON)))
+
+        login.send_keys(USERNAME)
+        password.send_keys(PASSWORD)
+
+        login_button.click()
+        sleep(1)
+        selenium_cookies = driver.get_cookies()
+        for cookie in selenium_cookies:
+            cookies[cookie['name']] = cookie['value']
     bs_url = "https://boardgamegeek.com/browse/boardgame/page/"
     pg_url = f"{bs_url}{page_num}"
-    pg = requests.get(pg_url)
+    if page_num <= 20:
+        pg = requests.get(pg_url)
+    else:
+        pg = requests.get(pg_url, cookies=cookies)
     soup = BeautifulSoup(pg.content, "html.parser")
     return soup
 

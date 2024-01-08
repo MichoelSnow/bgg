@@ -8,7 +8,7 @@ from requests.compat import urljoin
 def game_data():
     xml_bs = 'https://www.boardgamegeek.com/xmlapi2/thing?type=boardgame&stats=1&ratingcomments=1&page=1&pagesize=10&id='
     all_items = []
-    for pg in range(1, 31):
+    for pg in range(1, 2):
         soup_pg = browse_games(pg)
         pg_ids, pg_links = extract_game_ids(soup_pg)
         xml_fl = requests.get(f'{xml_bs}{",".join(pg_ids)}')
