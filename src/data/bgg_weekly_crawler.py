@@ -13,8 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
-
+from selenium.webdriver.chrome.service import Service
 
 
 LOGIN_USERNAME_FIELD = '//*[@id="inputUsername"]'
@@ -27,10 +26,33 @@ USERNAME = secrets["bgg_crawler"]["username"]
 PASSWORD = secrets["bgg_crawler"]["password"]
 
 chrome_options = Options()
-chrome_options.add_argument('--headless')
-chrome_options.add_argument('--no-sandbox')
-chrome_options.add_argument('--disable-dev-shm-usage')
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
 cookies = {}
+
+
+driver = webdriver.Chrome(service=Service('/usr/lib/chromium-browser/chromedriver'), options=chrome_options)
+driver.get("https://boardgamegeek.com/login")
+login = WebDriverWait(driver, 10).until(
+    EC.presence_of_element_located((By.XPATH, LOGIN_USERNAME_FIELD))
+)
+password = WebDriverWait(driver, 10).until(
+    EC.presence_of_element_located((By.XPATH, LOGIN_PASSWORD_FIELD))
+)
+
+login_button = WebDriverWait(driver, 10).until(
+    EC.presence_of_element_located((By.XPATH, LOGIN_BUTTON))
+)
+
+login.send_keys(USERNAME)
+password.send_keys(PASSWORD)
+
+login_button.click()
+sleep(1)
+selenium_cookies = driver.get_cookies()
+for cookie in selenium_cookies:
+    cookies[cookie["name"]] = cookie["value"]
 
 def game_data():
     xml_bs = "https://www.boardgamegeek.com/xmlapi2/thing?type=boardgame&stats=1&ratingcomments=1&page=1&pagesize=10&id="
@@ -107,33 +129,38 @@ def extract_item(game_item, game_url):
     for game_cat in game_item.find_all("rank"):
         cat_name = re.sub("\W", "", game_cat["friendlyname"])
         game_dict[cat_name] = int(game_cat["value"])
+    # Player count recommendations
+    player_count_poll = game_item.find("poll", attrs={"name": "suggested_numplayers"})
+    result_dict = {"total_votes": int(player_count_poll.attrs["totalvotes"])}
+    player_count_results = player_count_poll.findAll("results")
+    game_dict["player_count_recs"] = {}
+    for player_count in player_count_results:
+        num_players = player_count.attrs["numplayers"]
+        player_count_values = {
+            x.attrs["value"]: int(x.attrs["numvotes"])
+            for x in player_count.findAll("result")
+        }
+        play_count_rec = max(player_count_values, key=player_count_values.get)
+        if play_count_rec in game_dict["player_count_recs"]:
+            game_dict["player_count_recs"][play_count_rec].append(num_players)
+        else:
+            game_dict["player_count_recs"][play_count_rec] = [num_players]
+        result_dict[num_players] = player_count_values
+        result_dict[num_players]["total_votes"] = sum(
+            int(x.attrs["numvotes"]) for x in player_count.findAll("result")
+        )
+    game_dict["suggested_numplayers"] = result_dict
 
     return game_dict
 
 
 def browse_games(page_num):
-    if page_num == 21:
-        driver = webdriver.Chrome(options=chrome_options)
-        driver.get('https://boardgamegeek.com/login')
-        login = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_USERNAME_FIELD)))
-        password = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_PASSWORD_FIELD)))
-
-        login_button = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, LOGIN_BUTTON)))
-
-        login.send_keys(USERNAME)
-        password.send_keys(PASSWORD)
-
-        login_button.click()
-        sleep(1)
-        selenium_cookies = driver.get_cookies()
-        for cookie in selenium_cookies:
-            cookies[cookie['name']] = cookie['value']
     bs_url = "https://boardgamegeek.com/browse/boardgame/page/"
     pg_url = f"{bs_url}{page_num}"
-    if page_num <= 20:
+    if page_num <= 10:
         pg = requests.get(pg_url)
     else:
-        pg = requests.get(pg_url, cookies=cookies)
+        pg = requests.get(pg_url, cookies)
     soup = BeautifulSoup(pg.content, "html.parser")
     return soup
 
